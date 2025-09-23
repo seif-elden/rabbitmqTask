@@ -1,4 +1,8 @@
 import pika
+import json
+from datetime import datetime
+import uuid
+
 
 def send_message(message):
     try:
@@ -8,14 +12,22 @@ def send_message(message):
         # Declare the queue. It's safe to run this multiple times.
         channel.queue_declare(queue='my_queue', durable=True)
 
-        # Publish the user's message to the queue
-        channel.basic_publish(exchange='',
-                              routing_key='my_queue',
-                              body=message.encode('utf-8'),
-                              properties=pika.BasicProperties(
-                                  delivery_mode=pika.DeliveryMode.Persistent
-                              ))  
-        print(f" [x] Sent '{message}'")
+        # Build JSON message with UUID as id
+        payload = {
+            "id": str(uuid.uuid4()),  
+            "message": message,
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        channel.basic_publish(
+            exchange='',
+            routing_key='my_queue',
+            body=json.dumps(payload).encode('utf-8'),
+            properties=pika.BasicProperties(
+                delivery_mode=pika.DeliveryMode.Persistent
+            )
+        )
+        print(f" [x] Sent {payload}")
         connection.close()
 
     except pika.exceptions.AMQPConnectionError as e:
