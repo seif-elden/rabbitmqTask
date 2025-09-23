@@ -8,15 +8,15 @@ import time
 import socket
 
 # --- Environment Variables (hardcoded from docker-compose.yml) ---
-LOCAL_RABBIT_HOST = "localhost"
-LOCAL_RABBIT_PORT = 5674
-REMOTE_RABBIT_HOST = "localhost"
-REMOTE_RABBIT_PORT = 5673
+LOCAL_RABBIT_HOST = "rabbitmq_card"
+LOCAL_RABBIT_PORT = 5672
+REMOTE_RABBIT_HOST = "rabbitmq_user"
+REMOTE_RABBIT_PORT = 5672
 RABBIT_USER = "guest"
 RABBIT_PASS = "guest"
 
-MYSQL_HOST = "localhost"
-MYSQL_PORT = 3308
+MYSQL_HOST = "mysql_card"
+MYSQL_PORT = 3306
 MYSQL_USER = "root"
 MYSQL_PASS = "rootpass"
 MYSQL_DB = "cards_db"
