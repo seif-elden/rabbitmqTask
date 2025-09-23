@@ -26,8 +26,8 @@ def on_message_received(ch, method, properties, body):
         print(f" [x] Received {message}")
 
         cursor = db_connection.cursor()
-        sql = "INSERT INTO messages (id, body, received_time) VALUES (%s, %s, %s)"
-        cursor.execute(sql, (message["id"], message["message"], message["time"]))
+        sql = "INSERT INTO messages (id, name, body, received_time) VALUES (%s, %s, %s, %s)"
+        cursor.execute(sql, (message["id"], message["name"], message["message"], message["time"]))
         db_connection.commit()
         
         print(" [✓] Saved message to database.")
