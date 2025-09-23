@@ -58,7 +58,13 @@ def publish_user(user_data):
     conn = rabbit_connection(LOCAL_RABBIT_HOST, LOCAL_RABBIT_PORT)
     ch = conn.channel()
     ch.queue_declare(queue="user_queue", durable=True)
-    ch.basic_publish(exchange="", routing_key="user_queue", body=json.dumps(user_data))
+    # Make message persistent by setting delivery_mode=2
+    ch.basic_publish(
+        exchange="", 
+        routing_key="user_queue", 
+        body=json.dumps(user_data),
+        properties=pika.BasicProperties(delivery_mode=2)  # Make message persistent
+    )
     conn.close()
     print(f"[service_user] Published user: {user_data['id']}")
 
@@ -69,21 +75,36 @@ def consume_cards():
             conn = rabbit_connection(REMOTE_RABBIT_HOST, REMOTE_RABBIT_PORT)
             ch = conn.channel()
             ch.queue_declare(queue="card_queue", durable=True)
+            
+            # Set QoS to process one message at a time
+            ch.basic_qos(prefetch_count=1)
 
             def callback(ch_, method, props, body):
-                card = json.loads(body)
-                db = get_db()
-                cur = db.cursor()
-                cur.execute(
-                    "INSERT INTO user_cards (id, user_id, card_data) VALUES (%s, %s, %s)",
-                    (card["id"], card["user_id"], json.dumps(card))
-                )
-                db.commit()
-                cur.close()
-                db.close()
-                print(f"[service_user] Saved card: {card['id']} for user {card['user_id']}")
+                try:
+                    card = json.loads(body)
+                    print(f"[service_user] Processing card: {card['id']} for user {card['user_id']}")
+                    
+                    db = get_db()
+                    cur = db.cursor()
+                    cur.execute(
+                        "INSERT INTO user_cards (id, user_id, card_data) VALUES (%s, %s, %s)",
+                        (card["id"], card["user_id"], json.dumps(card))
+                    )
+                    db.commit()
+                    cur.close()
+                    db.close()
+                    
+                    # Only acknowledge after successful database save
+                    ch_.basic_ack(delivery_tag=method.delivery_tag)
+                    print(f"[service_user] Successfully saved and acked card: {card['id']} for user {card['user_id']}")
+                    
+                except Exception as e:
+                    print(f"[service_user] Error processing card: {e}")
+                    # Reject message and requeue it for retry
+                    ch_.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+                    print(f"[service_user] Card message requeued due to error")
 
-            ch.basic_consume(queue="card_queue", on_message_callback=callback, auto_ack=True)
+            ch.basic_consume(queue="card_queue", on_message_callback=callback, auto_ack=False)
             print("[service_user] Waiting for cards...")
             ch.start_consuming()
         except Exception as e:
@@ -113,6 +134,7 @@ def create_user(user_data=None):
         }
 
     try:
+        # First save to database
         db = get_db()
         cur = db.cursor()
         cur.execute(
@@ -123,10 +145,19 @@ def create_user(user_data=None):
         cur.close()
         db.close()
 
+        # Then publish to queue - if this fails, the user is still in DB
+        # and can be republished manually if needed
         publish_user(user)
+        print(f"[service_user] User {user['id']} created and published successfully")
         return user
     except Exception as e:
         print(f"[service_user] Error creating user: {e}")
+        # If database save fails, rollback
+        if 'db' in locals():
+            db.rollback()
+            if 'cur' in locals():
+                cur.close()
+            db.close()
         raise e
 
 # --- API Endpoints ---
